@@ -8,14 +8,15 @@
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  10        /* Time ESP32 will go to sleep (in seconds) */
 #define DeviceName  "GPS_Device1"
-#define MqttId      "vikings"
-#define MqttPass    "19013005"
-#define Mqtt_Port   1883
-#define broker      "hungviet.hopto.org"   //513booyoungct4.ddns.net
-#define topicPub     "GsmClientTest/led"
+#define MqttId      "tyne"
+#define MqttPass    "123456"
+#define Mqtt_Port   1893
+#define broker      "513booyoungct4.ddns.net"   //513booyoungct4.ddns.net
+#define topicPub     "v1/devices/me/telemetry"
 #define TINY_GSM_MODEM_SIM7600
 #define GSM_AUTOBAUD_MIN 9600
 #define GSM_AUTOBAUD_MAX 115200
+#define PinPower 21
 
 // set GSM PIN, if any
 #define GSM_PIN ""
@@ -29,8 +30,8 @@ const char gprsPass[] = "mms";
 #include <PubSubClient.h>
 // MQTT details
 
-#define RXPin 19
-#define TXPin 18
+#define RXPin 18
+#define TXPin 19
 #define DHTPIN 32
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
@@ -71,7 +72,7 @@ long time_wifi = 0;
 void reconnect() {
   while (!mqtt.connected()) {
     Serial.print("Attempting MQTT connection...");
-    if (mqtt.connect("GPS_Device1", "vikings", "19013005")) {
+    if (mqtt.connect("GPS_Device1", "tyne", "123456")) {
       Serial.println("connected");
       // Subscribe
       mqtt.publish("GsmClientTest/init", "Connect Success");
@@ -98,6 +99,8 @@ void reconnect() {
 }
 void setup() {
   // Set console baud rate
+  pinMode(PinPower, OUTPUT);
+  digitalWrite(PinPower, 1);
   Serial.begin(115200);
   ss.begin(GPSBaud);
   Longitude = "";
@@ -142,14 +145,14 @@ void setup() {
 
     receivedString = receivedString.substring(6);
     if (receivedString[0] != 'D' || receivedString[1] != 'D') {
-      StateInforSim = false;
+      //StateInforSim = false;
       break;
     }
 
     if (receivedString.length() > 4 && receivedString.length() < 7)
     {
-      data_send["battery_vol"] = receivedString;
-      StateInforSim = true;
+
+      //StateInforSim = true;
       break;
     }
   }
@@ -161,7 +164,7 @@ void setup() {
   esp_task_wdt_add(NULL); //add current thread to WDT watch
   //if (GSM_PIN && modem.getSimStatus() != 3) { modem.simUnlock(GSM_PIN); }
   setup_GPRS();
-  mqtt.setServer(broker, 1883);
+  mqtt.setServer(broker, 1893);
   mqtt.setCallback(mqttCallback);
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
 
@@ -199,45 +202,68 @@ void loop() {
       {
         Longitude = gps.location.lng();
         Latitude = gps.location.lat();
+
         Serial.print("Latitude: "); Serial.println(Latitude);
         Serial.print("Longitude: "); Serial.println(Longitude);
-        if (Longitude.length() > 0 && Latitude.length() > 0) StateInforGps = true;
-        data_send["latitude"] = Latitude;
-        data_send["longitude"] = Longitude;
+
         state_device["Infor GPS"] = StateInforGps;
       }
+      //      data_send["latitude"] = Latitude;
+      //      data_send["longitude"] = Longitude;
+      if (Longitude.length() > 3 && Latitude.length() > 3) {
+        humidity = dht.readHumidity();
+        float temp = dht.readTemperature();
+        temperature = round(temp * 100) / 100.0;
 
-      humidity = dht.readHumidity();
-      float temp = dht.readTemperature();
-      temperature = round(temp * 100) / 100.0;
-      if (!isnan(temperature) && !isnan(humidity))
-      {
+        //      if (
+        data_send["battery_vol"] = receivedString;
+        data_send["latitude"] = Latitude;
+        data_send["longitude"] = Longitude;
         sprintf(temperature_str, "%.2f", temperature);
         data_send["humidity"] = humidity;
         data_send["temperature"] = temperature_str;
         StateInforDht = true;
+        data_send["state_device"] = state_device;
+        state_device["Infor GPS"] = StateInforGps;
+        state_device["Infor DHT"] = StateInforDht;
+        state_device["Infor SIM"] = StateInforSim;
 
+
+        String Jdata;
+        serializeJson(data_send, Jdata);
+        //  //gửi json đến topic esp32/json
+        mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
+        delay(1000);
+        Serial.println("MQTT Send Data");
+        Serial.println("###############################################");
+        esp_task_wdt_reset();
+        
+        esp_deep_sleep_start();
       }
 
-    }
-    if (millis() - time_reset > 20000) {
-      data_send["state_device"] = state_device;
-      state_device["Infor GPS"] = StateInforGps;
-      state_device["Infor DHT"] = StateInforDht;
-      state_device["Infor SIM"] = StateInforSim;
-
-
-      String Jdata;
-      serializeJson(data_send, Jdata);
-      //  //gửi json đến topic esp32/json
-      mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
-      Serial.println("MQTT Send Data");
-      Serial.println("###############################################");
-      esp_task_wdt_reset();
-      esp_deep_sleep_start();
-
 
 
     }
+    //    if (millis() - time_reset > 10000) {
+    //      data_send["state_device"] = state_device;
+    //      state_device["Infor GPS"] = StateInforGps;
+    //      state_device["Infor DHT"] = StateInforDht;
+    //      state_device["Infor SIM"] = StateInforSim;
+    //
+    //
+    //      String Jdata;
+    //      serializeJson(data_send, Jdata);
+    //      //  //gửi json đến topic esp32/json
+    //      mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
+    //      Serial.println("MQTT Send Data");
+    //      Serial.println("###############################################");
+    //      esp_task_wdt_reset();
+    //      time_reset = millis();
+    //      if (StateInforGps == true)
+    //        esp_deep_sleep_start();
+    //
+    //
+    //
+    //    }
   }
 }
