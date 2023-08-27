@@ -6,12 +6,13 @@
 
 
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
-#define TIME_TO_SLEEP  10        /* Time ESP32 will go to sleep (in seconds) */
+#define TIME_TO_SLEEP  300        /* Time ESP32 will go to sleep (in seconds) */
 #define DeviceName  "GPS_Device1"
-#define MqttId      "tyne"
-#define MqttPass    "123456"
+const char *MqttId =  "tyne";
+const char *MqttPass =  "123456";
 #define Mqtt_Port   1893
-#define broker      "513booyoungct4.ddns.net"   //513booyoungct4.ddns.net
+const char *broker =  "513booyoungct4.ddns.net";
+//#define broker      "513booyoungct4.ddns.net"   //513booyoungct4.ddns.net
 #define topicPub     "v1/devices/me/telemetry"
 #define TINY_GSM_MODEM_SIM7600
 #define GSM_AUTOBAUD_MIN 9600
@@ -49,8 +50,8 @@ float temperature = 0;
 char temperature_str[10];
 String battery_vol;
 String receivedString = "";
-String Longitude;
-String Latitude;
+double Longitude;
+double Latitude;
 String stateDevice = "";
 bool StateInforSim = false;
 bool StateInforGps = false;
@@ -72,12 +73,10 @@ long time_wifi = 0;
 void reconnect() {
   while (!mqtt.connected()) {
     Serial.print("Attempting MQTT connection...");
-    if (mqtt.connect("GPS_Device1", "tyne", "123456")) {
+    if (mqtt.connect(DeviceName, MqttId, MqttPass)) {
       Serial.println("connected");
       // Subscribe
-      mqtt.publish("GsmClientTest/init", "Connect Success");
-      delay(2000);
-      mqtt.publish("esp32/status", "Connect Failed");
+
     }
     else {
       long now = millis();
@@ -103,8 +102,8 @@ void setup() {
   digitalWrite(PinPower, 1);
   Serial.begin(115200);
   ss.begin(GPSBaud);
-  Longitude = "";
-  Latitude = "";
+  Longitude = 0;
+  Latitude = 0;
   delay(1000);
 
 
@@ -126,9 +125,10 @@ void setup() {
   Serial.print("Modem Info: ");
   Serial.println(modemInfo);
   delay(1000);
-  for (int i = 0; i < 5; i++)
-  {
+  long time_pin = millis();
+  while (1) {
     Serial2.println("AT+CBC");
+    delay(10);
     while (!Serial2.available());
     while (Serial2.available()) {
       char receivedChar = Serial2.read(); // Đọc kí tự từ cổng UART
@@ -142,29 +142,42 @@ void setup() {
         receivedString += receivedChar; // Thêm kí tự vào biến receivedString
       }
     }
-
-    receivedString = receivedString.substring(6);
-    if (receivedString[0] != 'D' || receivedString[1] != 'D') {
-      //StateInforSim = false;
-      break;
+    if (receivedString[0] == '+') {
+      receivedString = receivedString.substring(6);
+      
+      if (receivedString.length() > 4 && receivedString.length() < 7)
+      {
+        Serial.print("receivedString: "); Serial.println(receivedString);
+        break;
+      }
     }
 
-    if (receivedString.length() > 4 && receivedString.length() < 7)
-    {
+    //    receivedString = receivedString.substring(6);
+    //    if (receivedString[0] != 'D' || receivedString[1] != 'D') {
+    //    if (receivedString.length() > 4 && receivedString.length() < 7)
+    //    {
+    //      break;
+    //    }
+    //    }
 
-      //StateInforSim = true;
-      break;
-    }
+//    Serial.print("receivedString: "); Serial.println(receivedString);
+    //    if (receivedString[0] != 'D' || receivedString[1] != 'D') {
+    //      //StateInforSim = false;
+    //      continue;
+    //    }
+
+
+    if (millis() - time_pin > 10000) break;
   }
 
 
   Serial.print("Battery Voltage: ");  Serial.println(receivedString);
   Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-  esp_task_wdt_init(30, true); // Set WDT to reset after 30 seconds
+  esp_task_wdt_init(50, true); // Set WDT to reset after 30 seconds
   esp_task_wdt_add(NULL); //add current thread to WDT watch
   //if (GSM_PIN && modem.getSimStatus() != 3) { modem.simUnlock(GSM_PIN); }
   setup_GPRS();
-  mqtt.setServer(broker, 1893);
+  mqtt.setServer(broker, Mqtt_Port);
   mqtt.setCallback(mqttCallback);
   esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
 
@@ -191,79 +204,66 @@ void loop() {
     reconnect();
   }
   //  esp_task_wdt_reset();
+
+  mqtt.loop();
   long time_reset = millis();
-  while (ss.available() > 0)
-  {
-    mqtt.loop();
-    if (gps.encode(ss.read()))
+  while (1) {
+    while (ss.available() > 0)
     {
-      Serial.print(F("Location: "));
-      if (gps.location.isValid())
+      if (gps.encode(ss.read()))
       {
-        Longitude = gps.location.lng();
-        Latitude = gps.location.lat();
-
-        Serial.print("Latitude: "); Serial.println(Latitude);
-        Serial.print("Longitude: "); Serial.println(Longitude);
-
-        state_device["Infor GPS"] = StateInforGps;
+        Serial.print(F("Location: "));
+        if (gps.location.isValid())
+        {
+          Longitude = gps.location.lng();
+          Latitude = gps.location.lat();
+          data_send["latitude"] = Latitude;
+          data_send["longitude"] = Longitude;
+          Serial.print("Latitude: "); Serial.println(Latitude);
+          Serial.print("Longitude: "); Serial.println(Longitude);
+          break;
+        }
+        if (millis() - time_reset > 10000) break;
+        ////
       }
-      //      data_send["latitude"] = Latitude;
-      //      data_send["longitude"] = Longitude;
-      if (Longitude.length() > 3 && Latitude.length() > 3) {
-        humidity = dht.readHumidity();
-        float temp = dht.readTemperature();
-        temperature = round(temp * 100) / 100.0;
-
-        //      if (
-        data_send["battery_vol"] = receivedString;
-        data_send["latitude"] = Latitude;
-        data_send["longitude"] = Longitude;
-        sprintf(temperature_str, "%.2f", temperature);
-        data_send["humidity"] = humidity;
-        data_send["temperature"] = temperature_str;
-        StateInforDht = true;
-        data_send["state_device"] = state_device;
-        state_device["Infor GPS"] = StateInforGps;
-        state_device["Infor DHT"] = StateInforDht;
-        state_device["Infor SIM"] = StateInforSim;
-
-
-        String Jdata;
-        serializeJson(data_send, Jdata);
-        //  //gửi json đến topic esp32/json
-        mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
-        delay(1000);
-        Serial.println("MQTT Send Data");
-        Serial.println("###############################################");
-        esp_task_wdt_reset();
-        
-        esp_deep_sleep_start();
-      }
-
-
-
     }
-    //    if (millis() - time_reset > 10000) {
-    //      data_send["state_device"] = state_device;
-    //      state_device["Infor GPS"] = StateInforGps;
-    //      state_device["Infor DHT"] = StateInforDht;
-    //      state_device["Infor SIM"] = StateInforSim;
-    //
-    //
-    //      String Jdata;
-    //      serializeJson(data_send, Jdata);
-    //      //  //gửi json đến topic esp32/json
-    //      mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
-    //      Serial.println("MQTT Send Data");
-    //      Serial.println("###############################################");
-    //      esp_task_wdt_reset();
-    //      time_reset = millis();
-    //      if (StateInforGps == true)
-    //        esp_deep_sleep_start();
-    //
-    //
-    //
-    //    }
+    if (millis() - time_reset > 10000) break;
   }
+
+  ///
+
+  //      humidity = dht.readHumidity();
+  //      float temp = dht.readTemperature();
+  //      data_send["latitude"] = Latitude;
+  //      data_send["longitude"] = Longitude;
+  for (int i = 0; i < 1000; i++) {
+    humidity = dht.readHumidity();
+    float temp = dht.readTemperature();
+    if (!isnan(humidity) && !isnan(temperature)) {
+      temperature = round(temp * 100) / 100.0;
+      Serial.print("Humidity: "); Serial.println(humidity);
+      Serial.print("Temperature: "); Serial.println(temperature);
+      sprintf(temperature_str, "%.2f", temperature);
+      data_send["humidity"] = humidity;
+      data_send["temperature"] = temperature_str;
+      break;
+    }
+  }
+  data_send["battery_vol"] = receivedString;
+  String Jdata;
+  serializeJson(data_send, Jdata);
+  //  //gửi json đến topic esp32/json
+  mqtt.publish("v1/devices/me/telemetry", Jdata.c_str());
+  delay(1000);
+  Serial.println("MQTT Send Data");
+  Serial.println("###############################################");
+  esp_task_wdt_reset();
+
+  esp_deep_sleep_start();
+
+
 }
+
+//    }
+//  }
+//}
