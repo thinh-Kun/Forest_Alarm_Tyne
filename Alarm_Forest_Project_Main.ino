@@ -223,11 +223,11 @@ void loop() {
           Serial.print("Longitude: "); Serial.println(Longitude);
           break;
         }
-        if (millis() - time_reset > 10000) break;
+        if (millis() - time_reset > 120000) break;
         ////
       }
     }
-    if (millis() - time_reset > 10000) break;
+    if (millis() - time_reset > 120000) break;
   }
 
   ///
