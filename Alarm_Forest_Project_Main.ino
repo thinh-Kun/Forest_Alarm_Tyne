@@ -7,9 +7,9 @@
 
 #define uS_TO_S_FACTOR 1000000  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP  300        /* Time ESP32 will go to sleep (in seconds) */
-#define DeviceName  "GPS_Device1"
-const char *MqttId =  "tyne";
-const char *MqttPass =  "123456";
+#define DeviceName  "di51gz4ravrh1gxs9dwe"
+const char *MqttId =  "eczc1gpl5403vcscr4nj";
+const char *MqttPass =  "rc8q822wdbzljxqea1j3";
 #define Mqtt_Port   1893
 const char *broker =  "513booyoungct4.ddns.net";
 //#define broker      "513booyoungct4.ddns.net"   //513booyoungct4.ddns.net
@@ -75,6 +75,7 @@ void reconnect() {
     Serial.print("Attempting MQTT connection...");
     if (mqtt.connect(DeviceName, MqttId, MqttPass)) {
       Serial.println("connected");
+      esp_task_wdt_reset();
       // Subscribe
 
     }
@@ -104,6 +105,7 @@ void setup() {
   ss.begin(GPSBaud);
   Longitude = 0;
   Latitude = 0;
+  Serial.println("TYNE LAB!!!");
   delay(1000);
 
 
@@ -173,7 +175,7 @@ void setup() {
 
   Serial.print("Battery Voltage: ");  Serial.println(receivedString);
   Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-  esp_task_wdt_init(50, true); // Set WDT to reset after 30 seconds
+  esp_task_wdt_init(50, true); // Set WDT to reset after 50 seconds
   esp_task_wdt_add(NULL); //add current thread to WDT watch
   //if (GSM_PIN && modem.getSimStatus() != 3) { modem.simUnlock(GSM_PIN); }
   setup_GPRS();
@@ -227,7 +229,9 @@ void loop() {
         ////
       }
     }
+    if (Longitude > 0 && Latitude > 0) break;
     if (millis() - time_reset > 120000) break;
+    esp_task_wdt_reset();
   }
 
   ///
@@ -257,7 +261,7 @@ void loop() {
   delay(1000);
   Serial.println("MQTT Send Data");
   Serial.println("###############################################");
-  esp_task_wdt_reset();
+  
 
   esp_deep_sleep_start();
 
